@@ -106,7 +106,7 @@ public:
 
 void spawnParticles(const Circle&a,vector<Particle>& particles)
 {
-int count = 25; // count of particles
+int count = 50; // count of particles
 int id = 0;
 
 for(int i = 0; i < count; i++)
@@ -421,7 +421,7 @@ struct run
         circle.mass = 15.0f;
         circle2.mass = 5.0f;
 
-        radius = 0.05;
+        radius = 0.01;
 
         build_circle(radius,36);
         particleCount = vertices.size() - circleCount;
