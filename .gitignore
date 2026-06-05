@@ -1,20 +1,16 @@
-# executables
-*.exe
-
-# dlls
-*.dll
-
-# object files
-*.o
-*.obj
-
-# vscode
-.vscode/
-
-# build folders
 build/
-cmake-build-debug/
-cmake-build-release/
+cmake-build-*/
 
-# misc
+src/glm/
+include/GLFW/
+include/KHR/
+
+*.exe
+*.dll
+*.lib
+*.a
+*.obj
 *.pdb
+
+.vscode/
+.idea/

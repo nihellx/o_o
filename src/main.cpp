@@ -19,11 +19,16 @@ using namespace glm;
 
 //Global Variables
 class Particle;
+class Circle;
 
+float offsetx , offsety; // order to accsess mouse motion
 int circleCount;
 int particleCount;
 vector<vec3> vertices; // verticies of circle triangles
 vector<Particle> particles; // particle properties
+vector<Circle> circles;
+bool isMouseHeld = false;
+bool MouseArranger = false; // using in particle holding loop to arrange  holded and released stuff
 
 bool projectionChanged;
 vec2 aabb_center;
@@ -33,6 +38,9 @@ vec2 aabb_center;
 // Platform Functions
 static void key_callback(GLFWwindow* window ,int key , int action, int scancode, int mods);
 static void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+static void mouse_callback(GLFWwindow* window ,double xpos,double ypos); // mouse motion callback
+static void mouse_button_callback(GLFWwindow* window, int button ,int action, int mods); // mouse button callback 
+
 
 
 void build_circle(float radius,int vCount);
@@ -44,45 +52,66 @@ struct Core
 };
 
 
+int initial_id = 0;
 class Circle
 {
 public:
+    int interactionID;
+
+
     vec2 position;
     vec2 velocity;
     float radius;
     float mass;
+
+    Circle() 
+    {
+    if(initial_id == 0)
+    {
+    interactionID = initial_id;
+    initial_id += 1;
+    }
+    else if (initial_id != 0)
+    {
+    interactionID = initial_id;
+    initial_id += 1;
+    }
+    
+    
+    };
 };
 
 
 mt19937 gen(random_device{}());
-uniform_real_distribution<float> distr(-0.07f, 0.07f);
+uniform_real_distribution<float> distr(-0.07f, 1.0f);
 
 class Particle : public Circle
 {
 public:
     float speed;
     vec2 spread;
-
+    bool gravity;
     
 
 
-    Particle(vec2 pos ,vec2 vel, vec2 spread, float _mass )
+    Particle(vec2 pos ,vec2 vel, vec2 spread, float _mass , bool gravity)
     {
     position = pos;
     velocity = vel;
     this->spread = spread;
     mass = _mass;
+    
     }
 };
 
 void spawnParticles(const Circle&a,vector<Particle>& particles)
 {
-int count = 50; // count of particles
+int count = 25; // count of particles
+int id = 0;
 
 for(int i = 0; i < count; i++)
 {
-
-
+    id += 1;
     float mass = a.mass * 0.1;
 
 
@@ -94,7 +123,9 @@ vec2 vel = spread;
 vec2 pos = a.position + vec2(a.radius,0.0f); // offset to relative circle
 
 
-particles.emplace_back(pos,vel,spread,mass);
+bool gravity = true;
+
+particles.emplace_back(pos,vel,spread,mass,gravity);
 }
 
 }
@@ -116,7 +147,7 @@ return distanceSquared <= radiusSummarize * radiusSummarize;
 
 void wall_collison(Circle&object)
 {
-const float bounciness = 1.2f;
+const float bounciness = 1.12f;
 const float gravity = 9.81;
 const float dt = 0.016;
 // const float friction = object.mass * gravity * 0.5 * dt;
@@ -175,7 +206,6 @@ return F * direction;
 
 void Collison(Circle&a,Circle&b)
 {
-
 vec2 normal = b.position - a.position;
 
 float distance = length(normal);
@@ -331,6 +361,9 @@ struct run
         glfwMakeContextCurrent(window);
 
         glfwSetKeyCallback(window, key_callback);
+        glfwSetCursorPosCallback(window,mouse_callback); // cursor pos callback is only for mouse motion tracking not for click
+        glfwSetMouseButtonCallback(window,mouse_button_callback);
+
 
         // glfwSwapInterval(1);
 
@@ -375,7 +408,7 @@ struct run
         circle2.radius = radius;
 
 
-        float maxSpeed = 10.0f;
+        float maxSpeed = 7.0f;
         //starting pos
         circle.position = vec2(-1.0f,-1.0f); 
         circle2.position = vec2(1.0f,-1.0f);
@@ -385,10 +418,10 @@ struct run
         circle2.velocity = vec2(-5.0f,10.0f);
 
         //starting mass
-        circle.mass = 1.0f;
-        circle2.mass = 1.0f;
+        circle.mass = 15.0f;
+        circle2.mass = 5.0f;
 
-        radius = 0.01;
+        radius = 0.05;
 
         build_circle(radius,36);
         particleCount = vertices.size() - circleCount;
@@ -458,6 +491,7 @@ struct run
       
             }
 
+
             Collison(circle,circle2);
 
 
@@ -504,12 +538,33 @@ struct run
             particles[i].radius = radius;
             wall_collison(particles[i]);
             
-            
+        
+
             vec2 g = gravityForce(particles[i],core);
+
+            if(particles[i].gravity == false)
+            {
+            if(isMouseHeld)
+            {
+                if(MouseArranger == false) // just a one time we have to multiply their velocity with 0 otherwise that would break the velocity
+                {
+                particles[i].velocity *= 0;
+                MouseArranger=true; 
+                }
+
+                g *= 0; // prevent pull to core while holding 
+            }
+
+            }
+
             vec2 accelerat = g / particles[i].mass;
+            
 
             particles[i].velocity += accelerat * deltaTime;
             particles[i].position += particles[i].velocity * deltaTime;
+
+
+    
 
             if(length(particles[i].velocity) > maxSpeed)
             {
@@ -521,6 +576,7 @@ struct run
             Collison(particles[i],particles[j]);
             Collison(particles[i],circle);
             Collison(particles[i],circle2);
+
             }
    
 
@@ -564,15 +620,108 @@ int main()
 }
 
 
-static void key_callback(GLFWwindow* window ,int key , int action, int scancode, int mods)
+
+static void key_callback(GLFWwindow* window ,int key ,  int scancode, int action, int mods) // callbacks
 {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS){
          glfwSetWindowShouldClose(window, GLFW_TRUE);
     }
+    if (key == GLFW_KEY_F && action == GLFW_PRESS){
+        for(auto&p : particles)
+        {
+            p.velocity += vec2(distr(gen),distr(gen)) * 2.0f;
+        }
+    }
+
+
 }
+
+
+
 
 static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     glViewport(0, 0, width, height);
 
+}
+
+
+
+float lastx = 500 , lasty  = 500;
+
+
+bool initialm = true; // for checking the first mouse input
+static void mouse_callback(GLFWwindow* window ,double xpos,double ypos) // this is for mouse motion callback
+{
+
+
+
+if (initialm)
+{
+lastx = xpos;
+lasty = ypos;
+initialm = false;
+}
+
+
+offsetx = xpos - lastx;
+offsety = lasty - ypos;
+
+
+
+lastx = xpos;
+lasty = ypos;
+
+
+float sensitivity = 0.05;
+offsetx *= sensitivity;
+offsety *= sensitivity;
+
+float nx = (xpos / 1000) * 2.0f - 1.0f;
+float ny = 1.0f - (ypos / 1000) * 2.0f;
+
+vec2 mousePos = vec2(nx,ny);
+
+if(isMouseHeld)
+{
+for(auto&p : particles)
+{
+    vec2 distance = p.position - mousePos;
+    
+    if(dot(distance,distance) < p.radius * p.radius) // we are using dot product here instead of lenght sqrt is expensive its cheaper but same result 
+    // in cases like u dont need exact value of return of lenght using dot product is better way
+    {
+    p.position = mousePos;
+    // p.velocity *= 0;
+    p.gravity = false;
+    }
+    else
+    {
+    p.gravity = true;
+    }
+
+}
+}
+
+
+
+}
+
+static void mouse_button_callback(GLFWwindow* window, int button ,int action, int mods)
+{
+    // mouse button stuff
+
+if (button == GLFW_MOUSE_BUTTON_LEFT)
+{
+    if(action == GLFW_PRESS)
+    {
+        isMouseHeld = true;
+    }
+    else if (action == GLFW_RELEASE)
+    {
+        isMouseHeld = false;
+        MouseArranger = false;
+    }
+
+}
 }
